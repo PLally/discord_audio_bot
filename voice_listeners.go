@@ -16,7 +16,7 @@ func voiceUpdate(vc *discordgo.VoiceConnection, vs *discordgo.VoiceSpeakingUpdat
 	ovc.userLookup[ssrc] = vs.UserID
 }
 
-func listenToFiles(vc *discordgo.VoiceConnection, users []string) ( *openVoiceConnection ){
+func listen(vc *discordgo.VoiceConnection, users []string) ( *openVoiceConnection ){
 	isListenedTo := make(map[string]bool)
 	for _, u := range users {
 		isListenedTo[u] = true
@@ -48,7 +48,6 @@ func listenToFiles(vc *discordgo.VoiceConnection, users []string) ( *openVoiceCo
 			_ = os.MkdirAll(filepath,  os.ModePerm)
 			f, err := os.Create(filepath+ time.Now().Format("2006-01-02 15-04-05")+".pcm")
 
-			fmt.Println(err)
 			if err == nil {
 				files[id] = f
 			} else {
@@ -69,6 +68,7 @@ func listenToFiles(vc *discordgo.VoiceConnection, users []string) ( *openVoiceCo
 				return
 			}
 			userID := ovc.userLookup[data.SSRC]
+
 			if isListenedTo[userID] {
 				bytes := make([]byte, len(data.PCM)*2)
 				for i, n := range data.PCM {

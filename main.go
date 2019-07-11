@@ -68,13 +68,17 @@ func recordCommand(cmd textCommand, s *discordgo.Session, m *discordgo.MessageCr
 	if err != nil {
 		return "Couldn't join your voice channel"
 	}
+	_, ok := openVoiceConnections[vc]
+	if ok {
+		return "The bot is already recording in this guild"
+	}
 	s.ChannelMessageSend(m.ChannelID, "Joined your voice Channel")
 
 	var users []string
 	for _, m := range m.Mentions {
 		users = append(users, m.ID)
 	}
-	listenToFiles(vc, users)
+	listen(vc, users)
 	return "Recording users"
 }
 
