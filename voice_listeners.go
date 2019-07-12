@@ -7,13 +7,70 @@ import (
 	"os"
 	"encoding/binary"
 	"fmt"
+	"sync"
 )
-var openVoiceConnections = make(map[*discordgo.VoiceConnection]openVoiceConnection)
+
+type openVoiceConnection struct {
+	voiceConnection *discordgo.VoiceConnection
+	recv chan *discordgo.Packet
+	users map[string]uint32
+	userLookup ssrcLookupMap
+}
+
+type ssrcLookupMap struct {
+	sync.RWMutex
+	users map[uint32]string
+}
+
+func (m *ssrcLookupMap) Set(key uint32, value string) {
+	m.Lock()
+	m.users[key] = value
+	m.Unlock()
+}
+
+func (m *ssrcLookupMap) Get(key uint32) (value string, ok bool) {
+	m.RLock()
+	result, ok := m.users[key]
+	m.RUnlock()
+	return result, ok
+}
+
+
+
+type openVoiceConnectionMap struct {
+	sync.RWMutex
+	connections map[*discordgo.VoiceConnection]*openVoiceConnection
+}
+
+func (m *openVoiceConnectionMap) Set(key *discordgo.VoiceConnection, value *openVoiceConnection) {
+	m.Lock()
+	m.connections[key] = value
+	m.Unlock()
+}
+
+func (m *openVoiceConnectionMap) Get(key *discordgo.VoiceConnection) (value *openVoiceConnection, ok bool) {
+	m.RLock()
+	result, ok := m.connections[key]
+	m.RUnlock()
+	return result, ok
+}
+
+
+
+var openVoiceConnections = openVoiceConnectionMap{
+	connections: make(map[*discordgo.VoiceConnection]*openVoiceConnection),
+}
+
 func voiceUpdate(vc *discordgo.VoiceConnection, vs *discordgo.VoiceSpeakingUpdate) {
-	ovc := openVoiceConnections[vc]
+
+	ovc, ok := openVoiceConnections.Get(vc)
+	if !ok {
+		return
+	}
+
 	ssrc := uint32(vs.SSRC)
 	ovc.users[vs.UserID] = ssrc
-	ovc.userLookup[ssrc] = vs.UserID
+	ovc.userLookup.Set(ssrc, vs.UserID)
 }
 
 func listen(vc *discordgo.VoiceConnection, users []string) ( *openVoiceConnection ){
@@ -29,14 +86,17 @@ func listen(vc *discordgo.VoiceConnection, users []string) ( *openVoiceConnectio
 		vc.Speaking(false)
 	}()
 
-	ovc := openVoiceConnection{
+	ovc := &openVoiceConnection{
 		voiceConnection: vc,
 		recv: make(chan *discordgo.Packet, 300),
 		users: make(map[string]uint32),
-		userLookup: make(map[uint32]string),
+		userLookup: ssrcLookupMap{
+			users: make(map[uint32]string),
+		},
 	}
 
-	openVoiceConnections[vc] = ovc
+	openVoiceConnections.Set(vc, ovc)
+
 	vc.AddHandler(voiceUpdate)
 
 	go dgvoice.ReceivePCM(vc, ovc.recv)
@@ -67,8 +127,10 @@ func listen(vc *discordgo.VoiceConnection, users []string) ( *openVoiceConnectio
 			if !ok {
 				return
 			}
-			userID := ovc.userLookup[data.SSRC]
-
+			userID, ok := ovc.userLookup.Get(data.SSRC)
+			if !ok {
+				continue
+			}
 			if isListenedTo[userID] {
 				bytes := make([]byte, len(data.PCM)*2)
 				for i, n := range data.PCM {
@@ -85,11 +147,4 @@ func listen(vc *discordgo.VoiceConnection, users []string) ( *openVoiceConnectio
 
 	}()
 	return nil
-}
-
-type openVoiceConnection struct {
-	voiceConnection *discordgo.VoiceConnection
-	recv chan *discordgo.Packet
-	users map[string]uint32
-	userLookup map[uint32]string
 }

@@ -37,7 +37,6 @@ func main() {
 	dg.Close()
 }
 func pingCommand(cmd textCommand, s *discordgo.Session, m *discordgo.MessageCreate) (reply string) {
-	println(string(m.Timestamp))
 	timeSent, err := time.Parse( time.RFC3339Nano, string(m.Timestamp))
 	if err != nil {
 		fmt.Println(err)
@@ -68,7 +67,7 @@ func recordCommand(cmd textCommand, s *discordgo.Session, m *discordgo.MessageCr
 	if err != nil {
 		return "Couldn't join your voice channel"
 	}
-	_, ok := openVoiceConnections[vc]
+	_, ok := openVoiceConnections.Get(vc)
 	if ok {
 		return "The bot is already recording in this guild"
 	}
