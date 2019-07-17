@@ -67,7 +67,7 @@ func recordCommand(cmd textCommand, s *discordgo.Session, m *discordgo.MessageCr
 	if err != nil {
 		return "Couldn't join your voice channel"
 	}
-	_, ok := openVoiceConnections.Get(vc)
+	_, ok := vcManager.Get(vc)
 	if ok {
 		return "The bot is already recording in this guild"
 	}

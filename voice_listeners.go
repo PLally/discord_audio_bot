@@ -7,73 +7,20 @@ import (
 	"os"
 	"encoding/binary"
 	"fmt"
-	"sync"
 )
 
-type openVoiceConnection struct {
-	voiceConnection *discordgo.VoiceConnection
-	recv chan *discordgo.Packet
-	users map[string]uint32
-	userLookup ssrcLookupMap
-}
-
-type ssrcLookupMap struct {
-	sync.RWMutex
-	users map[uint32]string
-}
-
-func (m *ssrcLookupMap) Set(key uint32, value string) {
-	m.Lock()
-	m.users[key] = value
-	m.Unlock()
-}
-
-func (m *ssrcLookupMap) Get(key uint32) (value string, ok bool) {
-	m.RLock()
-	result, ok := m.users[key]
-	m.RUnlock()
-	return result, ok
-}
-
-
-
-type openVoiceConnectionMap struct {
-	sync.RWMutex
-	connections map[*discordgo.VoiceConnection]*openVoiceConnection
-}
-
-func (m *openVoiceConnectionMap) Set(key *discordgo.VoiceConnection, value *openVoiceConnection) {
-	m.Lock()
-	m.connections[key] = value
-	m.Unlock()
-}
-
-func (m *openVoiceConnectionMap) Get(key *discordgo.VoiceConnection) (value *openVoiceConnection, ok bool) {
-	m.RLock()
-	result, ok := m.connections[key]
-	m.RUnlock()
-	return result, ok
-}
-
-
-
-var openVoiceConnections = openVoiceConnectionMap{
-	connections: make(map[*discordgo.VoiceConnection]*openVoiceConnection),
-}
 
 func voiceUpdate(vc *discordgo.VoiceConnection, vs *discordgo.VoiceSpeakingUpdate) {
 
-	ovc, ok := openVoiceConnections.Get(vc)
+	ovc, ok := vcManager.Get(vc)
 	if !ok {
 		return
 	}
 
-	ssrc := uint32(vs.SSRC)
-	ovc.users[vs.UserID] = ssrc
-	ovc.userLookup.Set(ssrc, vs.UserID)
+	ovc.setSSRC(vs.UserID, uint32(vs.SSRC))
 }
 
-func listen(vc *discordgo.VoiceConnection, users []string) ( *openVoiceConnection ){
+func listen(vc *discordgo.VoiceConnection, users []string) ( *OpenVoiceConnection ){
 	isListenedTo := make(map[string]bool)
 	for _, u := range users {
 		isListenedTo[u] = true
@@ -86,16 +33,9 @@ func listen(vc *discordgo.VoiceConnection, users []string) ( *openVoiceConnectio
 		vc.Speaking(false)
 	}()
 
-	ovc := &openVoiceConnection{
-		voiceConnection: vc,
-		recv: make(chan *discordgo.Packet, 300),
-		users: make(map[string]uint32),
-		userLookup: ssrcLookupMap{
-			users: make(map[uint32]string),
-		},
-	}
+	ovc := newOpenVoiceConnection(vc)
 
-	openVoiceConnections.Set(vc, ovc)
+	vcManager.Set(vc, ovc)
 
 	vc.AddHandler(voiceUpdate)
 
@@ -127,17 +67,17 @@ func listen(vc *discordgo.VoiceConnection, users []string) ( *openVoiceConnectio
 			if !ok {
 				return
 			}
-			userID, ok := ovc.userLookup.Get(data.SSRC)
+			user, ok := ovc.getUserFromSSRC(data.SSRC)
 			if !ok {
 				continue
 			}
-			if isListenedTo[userID] {
+			if isListenedTo[user.UserID] {
 				bytes := make([]byte, len(data.PCM)*2)
 				for i, n := range data.PCM {
 					binary.LittleEndian.PutUint16(bytes[i*2:], uint16(n))
 				}
-
-				f := files[userID]
+				fmt.Println(len(data.PCM))
+				f := files[user.UserID]
 				if f != nil {
 					f.Write(bytes)
 				}
