@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/bwmarrin/discordgo"
 	"sync"
+	"io"
 )
 
 type VoiceManager struct {
@@ -45,22 +46,25 @@ type OpenVoiceConnection struct {
 	voiceUsers map[string]*VoiceUser
 	userLookup map[uint32]*VoiceUser
 	userMapLock sync.RWMutex
+	data io.Writer
 }
 
 type VoiceUser struct {
 	SSRC uint32
 	UserID string
-
+	audioIn io.Writer
 }
 
 func (ovc *OpenVoiceConnection) Close() {
 	ovc.VoiceConnection.Close()
 }
 
-func (ovc *OpenVoiceConnection) newUser(userID string) (user *VoiceUser) {
+func (ovc *OpenVoiceConnection) newUser(userID string, w io.Writer) (user *VoiceUser) {
+
 	user = &VoiceUser {
 		SSRC: 0,
 		UserID: userID,
+		audioIn: w,
 	}
 
 	ovc.userMapLock.Lock()
@@ -70,18 +74,19 @@ func (ovc *OpenVoiceConnection) newUser(userID string) (user *VoiceUser) {
 	return user
 }
 
-func (ovc *OpenVoiceConnection) setSSRC(userID string, ssrc uint32) {
-	ovc.userMapLock.RLock()
-	user, ok := ovc.voiceUsers[userID]
-	ovc.userMapLock.RUnlock()
-	if !ok {
-		user = ovc.newUser(userID)
-	}
+func (ovc *OpenVoiceConnection) setSSRC(user *VoiceUser, ssrc uint32) {
 	user.SSRC = ssrc
 
 	ovc.userMapLock.Lock()
 	ovc.userLookup[ssrc] = user
 	ovc.userMapLock.Unlock()
+}
+
+func (ovc *OpenVoiceConnection) getUser(userID string) (user *VoiceUser, ok bool) {
+	ovc.userMapLock.RLock()
+	user, ok = ovc.voiceUsers[userID]
+	ovc.userMapLock.RUnlock()
+	return user, ok
 }
 
 func (ovc *OpenVoiceConnection) getUserFromSSRC(ssrc uint32) (user *VoiceUser, ok bool) {

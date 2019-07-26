@@ -4,9 +4,11 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"time"
 	"github.com/bwmarrin/dgvoice"
-	"os"
 	"encoding/binary"
 	"fmt"
+	"os"
+	"io/ioutil"
+	"io"
 )
 
 
@@ -16,8 +18,19 @@ func voiceUpdate(vc *discordgo.VoiceConnection, vs *discordgo.VoiceSpeakingUpdat
 	if !ok {
 		return
 	}
+	user, ok := ovc.getUser(vs.UserID)
+	if !ok {
+		path := fmt.Sprintf("recorded_audio/users/%s/", vs.UserID)
+		var f io.Writer
+		_ = os.MkdirAll(path,  os.ModePerm)
+		f, err := os.Create(path + time.Now().Format("2006-01-02 15-04-05")+".pcm")
+		if err != nil {
+			f = ioutil.Discard
+		}
 
-	ovc.setSSRC(vs.UserID, uint32(vs.SSRC))
+		user = ovc.newUser(vs.UserID, f)
+	}
+	ovc.setSSRC(user, uint32(vs.SSRC))
 }
 
 func listen(vc *discordgo.VoiceConnection, users []string) ( *OpenVoiceConnection ){
@@ -41,27 +54,6 @@ func listen(vc *discordgo.VoiceConnection, users []string) ( *OpenVoiceConnectio
 
 	go dgvoice.ReceivePCM(vc, ovc.recv)
 	go func() {
-		files := make(map[string]*os.File)
-		for _, id := range users {
-
-			filepath := fmt.Sprintf("recorded_audio/users/%s/",id)
-			_ = os.MkdirAll(filepath,  os.ModePerm)
-			f, err := os.Create(filepath+ time.Now().Format("2006-01-02 15-04-05")+".pcm")
-
-			if err == nil {
-				files[id] = f
-			} else {
-				isListenedTo[id] = false
-			}
-		}
-
-
-		defer func() {
-			for _, f := range files {
-				f.Close()
-			}
-		}()
-
 		for {
 			data, ok := <-ovc.recv
 			if !ok {
@@ -76,12 +68,7 @@ func listen(vc *discordgo.VoiceConnection, users []string) ( *OpenVoiceConnectio
 				for i, n := range data.PCM {
 					binary.LittleEndian.PutUint16(bytes[i*2:], uint16(n))
 				}
-				fmt.Println(len(data.PCM))
-				f := files[user.UserID]
-				if f != nil {
-					f.Write(bytes)
-				}
-
+				user.audioIn.Write(bytes)
 			}
 		}
 
