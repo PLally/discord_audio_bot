@@ -10,7 +10,7 @@ var commands []textCommand
 type commandCallback func(textCommand, *discordgo.Session, *discordgo.MessageCreate) string
 
 type textCommand struct {
-	prefix string
+	prefix   string
 	callback commandCallback
 }
 

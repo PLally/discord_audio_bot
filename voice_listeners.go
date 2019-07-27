@@ -1,16 +1,15 @@
 package main
 
 import (
-	"github.com/bwmarrin/discordgo"
-	"time"
-	"github.com/bwmarrin/dgvoice"
 	"encoding/binary"
 	"fmt"
-	"os"
-	"io/ioutil"
+	"github.com/bwmarrin/dgvoice"
+	"github.com/bwmarrin/discordgo"
 	"io"
+	"io/ioutil"
+	"os"
+	"time"
 )
-
 
 func voiceUpdate(vc *discordgo.VoiceConnection, vs *discordgo.VoiceSpeakingUpdate) {
 
@@ -22,8 +21,8 @@ func voiceUpdate(vc *discordgo.VoiceConnection, vs *discordgo.VoiceSpeakingUpdat
 	if !ok {
 		path := fmt.Sprintf("recorded_audio/users/%s/", vs.UserID)
 		var f io.Writer
-		_ = os.MkdirAll(path,  os.ModePerm)
-		f, err := os.Create(path + time.Now().Format("2006-01-02 15-04-05")+".pcm")
+		_ = os.MkdirAll(path, os.ModePerm)
+		f, err := os.Create(path + time.Now().Format("2006-01-02 15-04-05") + ".pcm")
 		if err != nil {
 			f = ioutil.Discard
 		}
@@ -33,7 +32,7 @@ func voiceUpdate(vc *discordgo.VoiceConnection, vs *discordgo.VoiceSpeakingUpdat
 	ovc.setSSRC(user, uint32(vs.SSRC))
 }
 
-func listen(vc *discordgo.VoiceConnection, users []string) ( *OpenVoiceConnection ){
+func listen(vc *discordgo.VoiceConnection, users []string) *OpenVoiceConnection {
 	isListenedTo := make(map[string]bool)
 	for _, u := range users {
 		isListenedTo[u] = true
@@ -63,15 +62,22 @@ func listen(vc *discordgo.VoiceConnection, users []string) ( *OpenVoiceConnectio
 			if !ok {
 				continue
 			}
+			s := 0 // amount of silence since last packet
 			if isListenedTo[user.UserID] {
-				bytes := make([]byte, len(data.PCM)*2)
-				for i, n := range data.PCM {
-					binary.LittleEndian.PutUint16(bytes[i*2:], uint16(n))
+
+				if user.lastPacket != nil && ovc.recordSilence {
+					s = int((data.Timestamp - user.lastPacket.Timestamp - 960) * 2)
 				}
-				user.audioIn.Write(bytes)
+				bytes := make([]byte, len(data.PCM)*2+s)
+				for i, n := range data.PCM {
+					binary.LittleEndian.PutUint16(bytes[i*2+s:], uint16(n))
+				}
+				user.audio.Write(bytes)
 			}
+			user.lastPacket = data
+
 		}
 
 	}()
-	return nil
+	return ovc
 }

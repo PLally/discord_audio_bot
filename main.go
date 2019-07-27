@@ -1,17 +1,19 @@
 package main
 
 import (
-	"github.com/bwmarrin/discordgo"
 	"fmt"
+	"github.com/bwmarrin/discordgo"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+	"strings"
 )
+//ffmpeg -f s16le -ar 48k -ac 2 -i file.pcm file.wav
 var TOKEN = os.Getenv("DISCORD_BOT_TOKEN")
 
 func main() {
-	dg, err := discordgo.New("Bot "+TOKEN)
+	dg, err := discordgo.New("Bot " + TOKEN)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -37,12 +39,12 @@ func main() {
 	dg.Close()
 }
 func pingCommand(cmd textCommand, s *discordgo.Session, m *discordgo.MessageCreate) (reply string) {
-	timeSent, err := time.Parse( time.RFC3339Nano, string(m.Timestamp))
+	timeSent, err := time.Parse(time.RFC3339Nano, string(m.Timestamp))
 	if err != nil {
 		fmt.Println(err)
 		return "pong..."
 	}
-	delay := ( time.Now().UnixNano() - timeSent.UnixNano()) / 1e6
+	delay := (time.Now().UnixNano() - timeSent.UnixNano()) / 1e6
 
 	return fmt.Sprintf("pong... %v ms", delay)
 }
@@ -77,8 +79,14 @@ func recordCommand(cmd textCommand, s *discordgo.Session, m *discordgo.MessageCr
 	for _, m := range m.Mentions {
 		users = append(users, m.ID)
 	}
-	listen(vc, users)
-	return "Recording users"
+	ovc := listen(vc, users)
+
+	s.ChannelMessageSend(m.ChannelID, "recording users")
+	if strings.Index(m.Content, "-silence") != -1 {
+		ovc.recordSilence = true
+		s.ChannelMessageSend(m.ChannelID, "keeping silence")
+	}
+	return
 }
 
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {

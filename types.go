@@ -2,8 +2,8 @@ package main
 
 import (
 	"github.com/bwmarrin/discordgo"
-	"sync"
 	"io"
+	"sync"
 )
 
 type VoiceManager struct {
@@ -17,7 +17,6 @@ func (m *VoiceManager) Set(key *discordgo.VoiceConnection, value *OpenVoiceConne
 	m.Unlock()
 }
 
-
 func (m *VoiceManager) Get(key *discordgo.VoiceConnection) (value *OpenVoiceConnection, ok bool) {
 	m.RLock()
 	result, ok := m.connections[key]
@@ -25,34 +24,35 @@ func (m *VoiceManager) Get(key *discordgo.VoiceConnection) (value *OpenVoiceConn
 	return result, ok
 }
 
-
-
 var vcManager = VoiceManager{
 	connections: make(map[*discordgo.VoiceConnection]*OpenVoiceConnection),
 }
 
-func newOpenVoiceConnection(vc *discordgo.VoiceConnection)  (*OpenVoiceConnection) {
+func newOpenVoiceConnection(vc *discordgo.VoiceConnection) *OpenVoiceConnection {
 	ovc := &OpenVoiceConnection{
 		VoiceConnection: vc,
-		recv: make(chan *discordgo.Packet, 300),
-		voiceUsers: make(map[string]*VoiceUser),
-		userLookup: make(map[uint32]*VoiceUser),
+		recv:            make(chan *discordgo.Packet, 300),
+		voiceUsers:      make(map[string]*VoiceUser),
+		userLookup:      make(map[uint32]*VoiceUser),
 	}
 	return ovc
 }
+
 type OpenVoiceConnection struct {
 	VoiceConnection *discordgo.VoiceConnection
-	recv chan *discordgo.Packet
-	voiceUsers map[string]*VoiceUser
-	userLookup map[uint32]*VoiceUser
-	userMapLock sync.RWMutex
-	data io.Writer
+	recv            chan *discordgo.Packet
+	voiceUsers      map[string]*VoiceUser
+	userLookup      map[uint32]*VoiceUser
+	userMapLock     sync.RWMutex
+	recordSilence   bool
+	audio           io.Writer // audio from voice users
 }
 
 type VoiceUser struct {
-	SSRC uint32
-	UserID string
-	audioIn io.Writer
+	SSRC       uint32
+	UserID     string
+	audio      io.Writer // audio from voice user
+	lastPacket *discordgo.Packet
 }
 
 func (ovc *OpenVoiceConnection) Close() {
@@ -61,10 +61,10 @@ func (ovc *OpenVoiceConnection) Close() {
 
 func (ovc *OpenVoiceConnection) newUser(userID string, w io.Writer) (user *VoiceUser) {
 
-	user = &VoiceUser {
-		SSRC: 0,
+	user = &VoiceUser{
+		SSRC:   0,
 		UserID: userID,
-		audioIn: w,
+		audio:  w,
 	}
 
 	ovc.userMapLock.Lock()
